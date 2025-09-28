@@ -38,33 +38,18 @@ export default function App() {
     return () => {
       console.log("App component unmounting - cleaning up...");
       
-      // Unsubscribe from events
+      // Unsubscribe from events first
       unsubs.forEach((u) => u());
       
-      // Stop discovery and unregister service
-      Promise.all([
-        invoke("stop_discovery").catch(console.error),
-        invoke("unregister_service").catch(console.error)
-      ]).then(() => {
-        console.log("Cleanup completed");
-      });
+      // Force cleanup of mDNS services
+      invoke("force_cleanup").catch(console.error);
+      
+      console.log("React cleanup completed");
     };
   }, []);
 
-  // Add beforeunload event listener for browser/app close
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      console.log("Window closing - cleaning up services...");
-      invoke("stop_discovery").catch(console.error);
-      invoke("unregister_service").catch(console.error);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
+  // Note: Removed beforeunload event listener as cleanup is now handled 
+  // properly in the Rust backend during window close events
 
   const startDiscovery = async () => {
     try {
@@ -92,7 +77,7 @@ export default function App() {
       await invoke("register_service", {
         serviceType: SERVICE,
         instanceName: "BruteConnect-Desktop",
-        port: 9000,
+        port: 9001,
         txt: ["role=desktop", "socketPort=5678"],
       });
       setAdvertising(true);
@@ -112,6 +97,15 @@ export default function App() {
     }
   };
 
+  const sendGoodbye = async () => {
+    try {
+      await invoke("send_goodbye_message");
+      console.log("Goodbye message sent");
+    } catch (error) {
+      console.error("Failed to send goodbye message:", error);
+    }
+  };
+
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
       <h1>BruteConnect (mDNS demo)</h1>
@@ -128,14 +122,18 @@ export default function App() {
         )}
         
         {advertising ? (
-          <button onClick={unadvertise} style={{ backgroundColor: "#ffc107", color: "black", padding: "10px 15px", border: "none", borderRadius: "4px" }}>
+          <button onClick={unadvertise} style={{ backgroundColor: "#ffc107", color: "black", padding: "10px 15px", border: "none", borderRadius: "4px", marginRight: "10px" }}>
             Unregister Device
           </button>
         ) : (
-          <button onClick={advertise} style={{ backgroundColor: "#28a745", color: "white", padding: "10px 15px", border: "none", borderRadius: "4px" }}>
+          <button onClick={advertise} style={{ backgroundColor: "#28a745", color: "white", padding: "10px 15px", border: "none", borderRadius: "4px", marginRight: "10px" }}>
             Advertise This Device
           </button>
         )}
+        
+        <button onClick={sendGoodbye} style={{ backgroundColor: "#6c757d", color: "white", padding: "10px 15px", border: "none", borderRadius: "4px" }}>
+          Send Goodbye
+        </button>
       </div>
 
       <div style={{ marginBottom: "1rem", padding: "10px", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
