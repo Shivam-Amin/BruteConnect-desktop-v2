@@ -7,7 +7,7 @@
 // }
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use enigo::{Enigo, Key, Keyboard, Settings};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use std::{net::IpAddr, sync::Mutex};
 use tauri::Emitter;
 use tokio::io::AsyncReadExt;
@@ -391,6 +391,68 @@ fn send_goodbye_message(state: State<MdnsState>) -> Result<(), String> {
     Ok(())
 }
 
+// Cursor control functions
+fn handle_cursor_command(action: &str, json_data: &serde_json::Value) {
+    println!("Handling cursor command: {}", action);
+
+    let mut enigo = match Enigo::new(&Settings::default()) {
+        Ok(enigo) => enigo,
+        Err(e) => {
+            eprintln!("Failed to create Enigo instance for cursor: {}", e);
+            return;
+        }
+    };
+
+    match action {
+        "left_click" => {
+            println!("Simulating left mouse click");
+            if let Err(e) = enigo.button(Button::Left, Direction::Click) {
+                eprintln!("Failed to simulate left click: {}", e);
+            }
+        }
+        "right_click" => {
+            println!("Simulating right mouse click");
+            if let Err(e) = enigo.button(Button::Right, Direction::Click) {
+                eprintln!("Failed to simulate right click: {}", e);
+            }
+        }
+        "move" => {
+            if let (Some(delta_x), Some(delta_y)) = (
+                json_data.get("deltaX").and_then(|v| v.as_i64()),
+                json_data.get("deltaY").and_then(|v| v.as_i64()),
+            ) {
+                println!("Moving cursor by deltaX: {}, deltaY: {}", delta_x, delta_y);
+                if let Err(e) = enigo.move_mouse(delta_x as i32, delta_y as i32, Coordinate::Rel) {
+                    eprintln!("Failed to move cursor: {}", e);
+                }
+            } else {
+                println!("Invalid cursor move command - missing deltaX or deltaY");
+            }
+        }
+        "scroll" => {
+            if let (Some(direction), Some(delta)) = (
+                json_data.get("direction").and_then(|v| v.as_str()),
+                json_data.get("delta").and_then(|v| v.as_i64()),
+            ) {
+                let scroll_amount = if direction == "up" {
+                    delta as i32
+                } else {
+                    -(delta as i32)
+                };
+                println!("Scrolling {} by delta: {}", direction, scroll_amount);
+                if let Err(e) = enigo.scroll(scroll_amount, Axis::Vertical) {
+                    eprintln!("Failed to scroll: {}", e);
+                }
+            } else {
+                println!("Invalid scroll command - missing direction or delta");
+            }
+        }
+        _ => {
+            println!("Unknown cursor action: {}", action);
+        }
+    }
+}
+
 // Presentation control functions
 fn handle_presentation_command(action: &str) {
     println!("Handling presentation command: {}", action);
@@ -445,10 +507,10 @@ async fn handle_socket_connection(mut stream: TcpStream, addr: std::net::SocketA
                         json_value.get("type").and_then(|v| v.as_str()),
                         json_value.get("action").and_then(|v| v.as_str()),
                     ) {
-                        if msg_type == "presentation" {
-                            handle_presentation_command(action);
-                        } else {
-                            println!("Unknown message type: {}", msg_type);
+                        match msg_type {
+                            "presentation" => handle_presentation_command(action),
+                            "cursor" => handle_cursor_command(action, &json_value),
+                            _ => println!("Unknown message type: {}", msg_type),
                         }
                     }
                     // Check if it's nested in a "data" field (mobile app format)
@@ -459,10 +521,10 @@ async fn handle_socket_connection(mut stream: TcpStream, addr: std::net::SocketA
                                 inner_json.get("type").and_then(|v| v.as_str()),
                                 inner_json.get("action").and_then(|v| v.as_str()),
                             ) {
-                                if msg_type == "presentation" {
-                                    handle_presentation_command(action);
-                                } else {
-                                    println!("Unknown inner message type: {}", msg_type);
+                                match msg_type {
+                                    "presentation" => handle_presentation_command(action),
+                                    "cursor" => handle_cursor_command(action, &inner_json),
+                                    _ => println!("Unknown inner message type: {}", msg_type),
                                 }
                             } else {
                                 println!("Invalid inner JSON format - missing type or action");
