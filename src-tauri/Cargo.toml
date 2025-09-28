@@ -31,4 +31,5 @@ portpicker = "0.1.1"
 searchlight = "0.3.2"
 if-addrs = "0.14.0"
 ctrlc = "3.4.5"
+enigo = "0.2.1"
 

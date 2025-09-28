@@ -9,6 +9,7 @@ export default function App() {
   const [devices, setDevices] = useState([]);
   const [discovering, setDiscovering] = useState(false);
   const [advertising, setAdvertising] = useState(false);
+  const [socketServerStatus, setSocketServerStatus] = useState({ running: false, port: null });
 
   useEffect(() => {
     const unsubs = [];
@@ -34,9 +35,27 @@ export default function App() {
       setDevices((prev) => prev.filter((x) => key(x) !== key(d)))
     );
 
+    // Check socket server status on startup
+    const checkSocketStatus = async () => {
+      try {
+        const status = await invoke("get_socket_server_status");
+        setSocketServerStatus(status);
+      } catch (error) {
+        console.error("Failed to get socket server status:", error);
+      }
+    };
+
+    checkSocketStatus();
+    
+    // Poll socket server status every 2 seconds
+    const statusInterval = setInterval(checkSocketStatus, 2000);
+
     // Cleanup function - this will run when component unmounts
     return () => {
       console.log("App component unmounting - cleaning up...");
+      
+      // Clear the status interval
+      clearInterval(statusInterval);
       
       // Unsubscribe from events first
       unsubs.forEach((u) => u());
@@ -74,16 +93,23 @@ export default function App() {
 
   const advertise = async () => {
     try {
+      // Check if socket server is running
+      if (!socketServerStatus.running) {
+        alert("Socket server must be running before advertising. Please wait for it to start or restart the app.");
+        return;
+      }
+
       await invoke("register_service", {
         serviceType: SERVICE,
         instanceName: "BruteConnect-Desktop",
         port: 9001,
-        txt: ["role=desktop", "socketPort=5678"],
+        txt: ["role=desktop"],
       });
       setAdvertising(true);
       console.log("Service registered");
     } catch (error) {
       console.error("Failed to register service:", error);
+      alert(`Failed to register service: ${error}`);
     }
   };
 
@@ -103,6 +129,27 @@ export default function App() {
       console.log("Goodbye message sent");
     } catch (error) {
       console.error("Failed to send goodbye message:", error);
+    }
+  };
+
+  const startSocketServer = async () => {
+    try {
+      const port = await invoke("start_socket_server");
+      console.log("Socket server started on port:", port);
+      setSocketServerStatus({ running: true, port });
+    } catch (error) {
+      console.error("Failed to start socket server:", error);
+      alert(`Failed to start socket server: ${error}`);
+    }
+  };
+
+  const stopSocketServer = async () => {
+    try {
+      await invoke("stop_socket_server");
+      console.log("Socket server stopped");
+      setSocketServerStatus({ running: false, port: null });
+    } catch (error) {
+      console.error("Failed to stop socket server:", error);
     }
   };
 
@@ -144,6 +191,29 @@ export default function App() {
         {" | "}
         <span style={{ color: advertising ? "#28a745" : "#6c757d" }}>
           {advertising ? " 📡 Advertising" : " 📴 Not Advertising"}
+        </span>
+        {" | "}
+        <span style={{ color: socketServerStatus.running ? "#28a745" : "#dc3545" }}>
+          {socketServerStatus.running ? ` 🔌 Socket Server: ${socketServerStatus.port}` : " 🔌 Socket Server: Stopped"}
+        </span>
+      </div>
+
+      {/* Socket Server Controls */}
+      <div style={{ marginBottom: "1rem", padding: "10px", backgroundColor: "#e9ecef", borderRadius: "4px" }}>
+        <strong>Socket Server:</strong>
+        {socketServerStatus.running ? (
+          <button onClick={stopSocketServer} style={{ backgroundColor: "#dc3545", color: "white", padding: "5px 10px", border: "none", borderRadius: "4px", marginLeft: "10px" }}>
+            Stop Server
+          </button>
+        ) : (
+          <button onClick={startSocketServer} style={{ backgroundColor: "#28a745", color: "white", padding: "5px 10px", border: "none", borderRadius: "4px", marginLeft: "10px" }}>
+            Start Server
+          </button>
+        )}
+        <span style={{ marginLeft: "10px", fontSize: "12px", color: "#6c757d" }}>
+          {socketServerStatus.running 
+            ? `Running on port ${socketServerStatus.port}` 
+            : "Required for device advertising"}
         </span>
       </div>
 
