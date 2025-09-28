@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/v2/capabilities.schema.json",
+  "identifier": "mdns",
+  "description": "Allows mDNS commands and events for BruteConnect",
+  "permissions": [
+    "core:default",
+    "core:app:allow-app-hide",
+    "core:app:allow-app-show",
+    "core:window:allow-close"
+  ]
+}
